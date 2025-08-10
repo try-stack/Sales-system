@@ -1,0 +1,13 @@
+{
+  "name": "trymore.dev",
+  "version": "1.0.0",
+  "description": "A simple web application to record, track, and summarize sales orders. Built with HTML, CSS, JavaScript, and enhanced with Bootstrap and Day.js.",
+  "main": "script.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>User Management - Sales System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: #f4f6f8;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 700px;
+            margin: 40px auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+            padding: 2rem 2.5rem;
+        }
+        .user-table th, .user-table td {
+            vertical-align: middle;
+        }
+        .logout-btn {
+            float: right;
+        }
+        .d-none {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>User Management <button class="btn btn-secondary btn-sm logout-btn" onclick="logout()">Logout</button></h2>
+        <div id="userRoleInfo" class="mb-3"></div>
+        <div id="adminOnlyContent" class="d-none">
+            <table class="table table-bordered user-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Orders</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="userList"></tbody>
+            </table>
+            <div id="userMsg" class="text-success"></div>
+        </div>
+        <div id="notAdminMsg" class="alert alert-danger d-none">Access denied. Admins only.</div>
+    </div>
+    <script>
+async function getUsers() {
+    const resp = await fetch('/api/users');
+    return await resp.json();
+}
+function getSessionUser() {
+    return JSON.parse(localStorage.getItem('salesUser') || 'null');
+}
+function logout() {
+    localStorage.removeItem('salesUser');
+    window.location.href = 'login.html';
+}
+document.addEventListener('DOMContentLoaded', function() {
+    const user = getSessionUser();
+    if (!user || user.role !== 'admin') {
+        window.location.href = 'login.html';
+        return;
+    }
+    // Show username and logout in navbar
+    const navInfo = document.getElementById('userNavInfo');
+    if (navInfo) {
+        navInfo.innerHTML = `<span class='text-light me-2'>${user.username} (${user.role})</span><button class='btn btn-sm btn-outline-light' onclick='logout()'>Logout</button>`;
+    }
+    renderUserList();
+});
+async function renderUserList() {
+    const users = await getUsers();
+    const tableBody = document.querySelector('#userList');
+    tableBody.innerHTML = '';
+    // Fetch order counts for all users from backend
+    const usernames = users.map(u => u.username);
+    let orderCounts = {};
+    try {
+        const resp = await fetch('/api/admin/user-order-counts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usernames })
+        });
+        if (resp.ok) {
+            orderCounts = await resp.json();
+        }
+    } catch (e) {
+        users.forEach(u => { orderCounts[u.username] = 0; });
+    }
+    users.forEach(function(u) {
+        const orderCount = orderCounts[u.username] || 0;
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${u.username}</td>
+            <td>${u.role}</td>
+            <td>${orderCount}</td>
+            <td><button class='btn btn-danger btn-sm' onclick='deleteUser(\'${u.username}\')'>Delete</button></td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+async function deleteUser(username) {
+    try {
+        const resp = await fetch(`/api/admin/delete-user/${encodeURIComponent(username)}`, { method: 'DELETE' });
+        if (resp.ok) {
+            renderUserList();
+        }
+    } catch (e) {
+        alert('Failed to delete user.');
+    }
+}
+</script>
+</body>
+</html>

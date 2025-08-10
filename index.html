@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sales system App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <!-- Bootstrap CSS for styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons (optional) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <!-- Day.js for date handling (optional, if you want to use it in your JS) -->
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.3/dayjs.min.js"></script>
+    <!-- Custom script for handling the sales orders -->
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.3/plugin/relativeTime.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.3/plugin/advancedFormat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.3/plugin/customParseFormat.js"></script>
+    <script>
+        dayjs.extend(dayjs_plugin_relativeTime);
+        dayjs.extend(dayjs_plugin_advancedFormat);
+        dayjs.extend(dayjs_plugin_customParseFormat);
+    </script>
+    <script src="script.js"></script>
+    <script src="shared.js"></script>
+    <script src="sales-analytics.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="index.html">Sales System</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link active" href="index.html">Orders</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="dashboard.html">Dashboard</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="users.html">User Management</a>
+                </li>
+            </ul>
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item" id="userNavInfo"></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+    <h1>Sales Order Recorder</h1>
+    <div class="container my-4">
+        <div class="row">
+            <div class="col-md-6">
+                <h4>Best Selling Products</h4>
+                <ul id="bestProducts"></ul>
+            </div>
+            <div class="col-md-6">
+                <h4>Top Customers</h4>
+                <ul id="topCustomers"></ul>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <h4>Sales Trends</h4>
+                <ul id="salesTrends"></ul>
+            </div>
+            <div class="col-md-6">
+                <h4>Recommendation</h4>
+                <div id="salesRecommendation" class="alert alert-info"></div>
+            </div>
+        </div>
+    </div>
+    <script>
+// --- Utility functions ---
+function getSessionUser() {
+    return JSON.parse(localStorage.getItem('salesUser') || 'null');
+}
+function logout() {
+    localStorage.removeItem('salesUser');
+    window.location.href = 'login.html';
+}
+const API_URL = '/orders';
+// --- Backend order API ---
+async function fetchOrders() {
+    const user = getSessionUser();
+    const res = await fetch(API_URL);
+    const allOrders = await res.json();
+    return allOrders.filter(o => o.username === user.username);
+}
+async function addOrder(order) {
+    const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+    });
+    return res.json();
+}
+async function deleteOrder(id) {
+    await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+}
+async function updateOrder(id, updates) {
+    const res = await fetch(`${API_URL}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+    });
+    return res.json();
+}
+// --- Render all recorded orders with actions ---
+async function renderAllRecordedOrdersTable() {
+    const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
+    tableBody.innerHTML = '';
+    const orders = await fetchOrders();
+    orders.forEach(order => {
+        // Status dropdown
+        const statusOptions = ['Awaiting Payment', 'Pending', 'Completed', 'Back Order']
+            .map(status => `<option value="${status}"${order.status === status ? ' selected' : ''}>${status}</option>`)
+            .join('');
+        // Actions dropdown
+        const actionsDropdown = `
+            <div class="dropdown">
+                <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Actions
+                </button>
+                <ul class="dropdown-menu">
+                    <li>
+                        <a class="dropdown-item complete-order" href="#" data-id="${order.id}">
+                            <i class="fa fa-check text-success"></i> Complete
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item delete-order" href="#" data-id="${order.id}">
+                            <i class="fa fa-trash text-danger"></i> Delete
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        `;
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${order.customer}</td>
+            <td>${order.product}</td>
+            <td>${order.quantity}</td>
+            <td>R${order.price.toFixed(2)}</td>
+            <td>R${order.total.toFixed(2)}</td>
+            <td>
+                <select class="form-select form-select-sm order-status-select" data-id="${order.id}">
+                    ${statusOptions}
+                </select>
+            </td>
+            <td>${dayjs(order.date).format('YYYY-MM-DD HH:mm')}</td>
+            <td>${actionsDropdown}</td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+// --- Form submission ---
+document.addEventListener('DOMContentLoaded', function() {
+    const user = getSessionUser();
+    if (!user) {
+        window.location.href = 'login.html';
+        return;
+    }
+    // Show username and logout in navbar
+    const navInfo = document.getElementById('userNavInfo');
+    if (navInfo) {
+        navInfo.innerHTML = `<span class='text-light me-2'>${user.username} (${user.role})</span><button class='btn btn-sm btn-outline-light' onclick='logout()'>Logout</button>`;
+    }
+    const form = document.getElementById('orderForm');
+    if (form) {
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const user = getSessionUser();
+            const customer = document.getElementById('customer').value.trim();
+            const product = document.getElementById('product').value.trim();
+            const quantity = parseInt(document.getElementById('quantity').value, 10);
+            const price = parseFloat(document.getElementById('price').value);
+            const status = document.getElementById('status').value;
+            const date = new Date().toISOString();
+            const total = quantity * price;
+    
+            const order = { customer, product, quantity, price, total, status, date, username: user.username };
+            await addOrder(order);
+            await renderAllRecordedOrdersTable();
+            form.reset();
+        });
+    }
+    // Delegate actions
+    document.querySelector('#allRecordedOrdersTable tbody').addEventListener('click', async function(e) {
+        if (e.target.closest('.delete-order')) {
+            e.preventDefault();
+            const id = e.target.closest('.delete-order').getAttribute('data-id');
+            if (confirm('Are you sure you want to delete this order?')) {
+                await deleteOrder(id);
+                await renderAllRecordedOrdersTable();
+            }
+        }
+        if (e.target.closest('.complete-order')) {
+            e.preventDefault();
+            const id = e.target.closest('.complete-order').getAttribute('data-id');
+            await updateOrder(id, { status: 'Completed' });
+            await renderAllRecordedOrdersTable();
+        }
+    });
+    document.querySelector('#allRecordedOrdersTable tbody').addEventListener('change', async function(e) {
+        if (e.target.classList.contains('order-status-select')) {
+            const id = e.target.getAttribute('data-id');
+            const newStatus = e.target.value;
+            await updateOrder(id, { status: newStatus });
+            await renderAllRecordedOrdersTable();
+        }
+    });
+    renderAllRecordedOrdersTable();
+});
+// --- Back Orders Table ---
+async function renderBackOrdersTable() {
+    const tableBody = document.querySelector('#backOrdersTable tbody');
+    tableBody.innerHTML = '';
+    const orders = await fetchOrders();
+    orders.filter(order => order.status && order.status.toLowerCase() === 'back order')
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .forEach(order => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${order.customer}</td>
+                <td>${order.product}</td>
+                <td>${order.quantity}</td>
+                <td>R${order.price.toFixed(2)}</td>
+                <td>R${order.total.toFixed(2)}</td>
+                <td>${dayjs(order.date).format('YYYY-MM-DD HH:mm')}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+}
+document.addEventListener('DOMContentLoaded', renderBackOrdersTable);
+// --- Grand Total ---
+async function renderGrandTotal() {
+    const orders = await fetchOrders();
+    const grandTotal = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+    document.getElementById('grandTotal').textContent = 'R' + grandTotal.toFixed(2);
+}
+document.addEventListener('DOMContentLoaded', renderGrandTotal);
+// --- Daily/Monthly Sales ---
+async function renderDailySales() {
+    const orders = await fetchOrders();
+    const today = dayjs().startOf('day');
+    const dailyTotal = orders.reduce((sum, order) => {
+        const orderDate = dayjs(order.date);
+        return orderDate.isSame(today, 'day') ? sum + (order.total || 0) : sum;
+    }, 0);
+    document.getElementById('dailyTotal').textContent = 'R' + dailyTotal.toFixed(2);
+}
+async function renderMonthlySales() {
+    const orders = await fetchOrders();
+    const monthStart = dayjs().startOf('month');
+    const monthlyTotal = orders.reduce((sum, order) => {
+        const orderDate = dayjs(order.date);
+        return orderDate.isSame(monthStart, 'month') ? sum + (order.total || 0) : sum;
+    }, 0);
+    document.getElementById('monthlyTotal').textContent = 'R' + monthlyTotal.toFixed(2);
+    // Also render monthly sales table
+    const monthlySales = {};
+    orders.forEach(order => {
+        const orderDate = dayjs(order.date);
+        const monthKey = orderDate.format('YYYY-MM');
+        if (!monthlySales[monthKey]) monthlySales[monthKey] = 0;
+        monthlySales[monthKey] += order.total || 0;
+    });
+    const tableBody = document.querySelector('#monthlySalesTable tbody');
+    if (tableBody) {
+        tableBody.innerHTML = '';
+        Object.entries(monthlySales).forEach(([month, total]) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${dayjs(month).format('MMMM YYYY')}</td><td>R${total.toFixed(2)}</td>`;
+            tableBody.appendChild(row);
+        });
+    }
+}
+document.addEventListener('DOMContentLoaded', renderDailySales);
+document.addEventListener('DOMContentLoaded', renderMonthlySales);
+// --- PDF Export ---
+function downloadSalesPDF() {
+    fetchOrders().then(orders => {
+        if (orders.length === 0) {
+            alert('No sales to export.');
+            return;
+        }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.text('All Recorded Sales', 14, 16);
+        const tableColumn = [
+            'Customer', 'Product', 'Quantity', 'Price per Unit', 'Total', 'Status', 'Date', 'Time'
+        ];
+        const tableRows = orders.map(order => [
+            order.customer,
+            order.product,
+            order.quantity,
+            'R' + (order.price || 0).toFixed(2),
+            'R' + (order.total || 0).toFixed(2),
+            order.status || 'Awaiting Payment',
+            dayjs(order.date).format('YYYY-MM-DD'),
+            dayjs(order.date).format('HH:mm')
+        ]);
+        doc.autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 22,
+            styles: { fontSize: 9 }
+        });
+        doc.save('sales-records.pdf');
+    });
+}
+// --- End ---
+</script>
+    <form id="orderForm">
+        <label>
+            Customer Name:
+            <input type="text" id="customer" required>
+        </label>
+        <label>
+            Product:
+            <input type="text" id="product" required>
+        </label>
+        <label>
+            Quantity:
+            <input type="number" id="quantity" min="1" required>
+        </label>
+        <label>
+            Price per Unit:
+            <input type="number" id="price" min="0.01" step="0.01" required>
+        </label>
+        <button type="submit">Add Order</button>
+    </form>
+
+    <table id="ordersTable">
+        <thead>
+            <tr>
+                <th>Customer</th>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Price per Unit</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Orders will appear here -->
+        </tbody>
+
+    <!-- Table to save all recorded orders for future reference -->
+    <h2>All Recorded Orders</h2>
+    <table id="allRecordedOrdersTable" class="table table-bordered all-recorded-orders-table">
+        <thead>
+            <tr>
+                <th>Customer</th>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Price per Unit</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th>Time</th>
+                
+            </tr>
+        </thead>
+        <tbody>
+            <!-- All recorded orders will appear here -->
+        </tbody>
+    </table>
+    <script>
+        // Render all recorded orders for future reference
+        function renderAllRecordedOrdersTable() {
+            const user = getSessionUser();
+            const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
+            tableBody.innerHTML = '';
+            const key = getUserOrderKey(user.username);
+            const savedOrders = JSON.parse(localStorage.getItem(key)) || [];
+            savedOrders.forEach(order => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${order.customer}</td>
+                    <td>${order.product}</td>
+                    <td>${order.quantity}</td>
+                    <td>R${order.price.toFixed(2)}</td>
+                    <td>R${order.total.toFixed(2)}</td>
+                    <td>${order.status || 'Awaiting Payment'}</td>
+                    <td>${dayjs(order.date).format('YYYY-MM-DD')}</td>
+                    <td>${dayjs(order.date).format('HH:mm')}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        // Update the table whenever orders are rendered or on page load
+        window.addEventListener('DOMContentLoaded', renderAllRecordedOrdersTable);
+        const originalRenderOrdersForAllOrders = renderOrders;
+        renderOrders = function() {
+            originalRenderOrdersForAllOrders.apply(this, arguments);
+            renderAllRecordedOrdersTable();
+        };
+        // Table to record all back orders by date
+        function renderBackOrdersTable() {
+            const tableBody = document.querySelector('#backOrdersTable tbody');
+            tableBody.innerHTML = '';
+            const savedOrders = JSON.parse(localStorage.getItem('orders')) || [];
+            savedOrders
+                .filter(order => order.status && order.status.toLowerCase() === 'back order')
+                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                .forEach(order => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${order.customer}</td>
+                        <td>${order.product}</td>
+                        <td>${order.quantity}</td>
+                        <td>R${order.price.toFixed(2)}</td>
+                        <td>R${order.total.toFixed(2)}</td>
+                        <td>${dayjs(order.date).format('YYYY-MM-DD HH:mm')}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+        }
+
+        // Render back orders table on page load
+        window.addEventListener('DOMContentLoaded', renderBackOrdersTable);
+
+        // Update back orders table whenever orders are rendered
+        const originalRenderOrdersForBackOrders = renderOrders;
+        renderOrders = function() {
+            originalRenderOrdersForBackOrders.apply(this, arguments);
+            renderAllRecordedOrdersTable();
+            renderBackOrdersTable();
+        };
+        </script> 
+
+        <script>
+            // Add status selection to the order form
+            document.addEventListener('DOMContentLoaded', function() {
+                const form = document.getElementById('orderForm');
+                // Create status select element
+                const statusLabel = document.createElement('label');
+                statusLabel.textContent = 'Status: ';
+                const statusSelect = document.createElement('select');
+                statusSelect.id = 'status';
+                statusSelect.className = 'form-select';
+                statusSelect.required = true;
+                ['Awaiting Payment', 'Pending', 'Completed', 'Back Order'].forEach(status => {
+                    const option = document.createElement('option');
+                    option.value = status;
+                    option.textContent = status;
+                    statusSelect.appendChild(option);
+                });
+                statusLabel.appendChild(statusSelect);
+
+                // Insert before the submit button
+                const submitBtn = form.querySelector('button[type="submit"]');
+                form.insertBefore(statusLabel, submitBtn);
+
+                // Patch form submission to include status
+                form.addEventListener('submit', function(e) {
+                    // This assumes you have a submit handler in script.js
+                    // If not, add your order saving logic here and include status:
+                    const status = document.getElementById('status').value;
+                    // ...save order with status...
+                }, true);
+            });
+        </script>
+        <!-- Table to record all back orders by date -->
+        <h2>Back Orders</h2>
+        <table id="backOrdersTable" class="table table-bordered mt-20 w-100 maxw-800">
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Product</th>
+                    <th>Quantity</th>
+                    <th>Price per Unit</th>
+                    <th>Total</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Back orders will appear here -->
+            </tbody>
+        </table>
+        <script>
+                // Re-render tables
+                if (typeof renderOrders === 'function') renderOrders();
+                if (typeof renderAllRecordedOrdersTable === 'function') renderAllRecordedOrdersTable();
+                if (typeof renderBackOrdersTable === 'function') renderBackOrdersTable();
+
+                // Reset form
+                form.reset();
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add delete button to each row in All Recorded Orders table
+            function renderAllRecordedOrdersTableWithDelete() {
+                const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
+                tableBody.innerHTML = '';
+                const savedOrders = JSON.parse(localStorage.getItem('orders')) || [];
+                savedOrders.forEach((order, idx) => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${order.customer}</td>
+                        <td>${order.product}</td>
+                        <td>${order.quantity}</td>
+                        <td>R${order.price.toFixed(2)}</td>
+                        <td>R${order.total.toFixed(2)}</td>
+                        <td>${order.status || 'Awaiting Payment'}</td>
+                        <td>${dayjs(order.date).format('YYYY-MM-DD HH:mm')}</td>
+                        <td><button class="btn btn-danger btn-sm delete-order" data-idx="${idx}"><i class="fa fa-trash"></i> Delete</button></td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            // Patch the renderAllRecordedOrdersTable function to include delete buttons
+            window.renderAllRecordedOrdersTable = renderAllRecordedOrdersTableWithDelete;
+
+            // Delegate delete button click
+            document.querySelector('#allRecordedOrdersTable tbody').addEventListener('click', function(e) {
+                if (e.target.closest('.delete-order')) {
+                    const idx = parseInt(e.target.closest('.delete-order').getAttribute('data-idx'), 10);
+                    let orders = JSON.parse(localStorage.getItem('orders')) || [];
+                    if (idx >= 0 && idx < orders.length) {
+                        if (confirm('Are you sure you want to delete this order?')) {
+                            orders.splice(idx, 1);
+                            localStorage.setItem('orders', JSON.stringify(orders));
+                            if (typeof renderOrders === 'function') renderOrders();
+                            if (typeof renderAllRecordedOrdersTable === 'function') renderAllRecordedOrdersTable();
+                            if (typeof renderBackOrdersTable === 'function') renderBackOrdersTable();
+                        }
+                    }
+                }
+            });
+            const salessData=[];
+
+            // Removed invalid event listener: no element with ID 'salesform' and incomplete code.
+                     
+             const API_URL = 'http://localhost:3000/orders';
+            
+            // Fetch all orders from backend
+            async function fetchOrders() {
+                const res = await fetch(API_URL);
+                return res.json();
+            }
+            
+            // Add a new order
+            async function addOrder(order) {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(order)
+                });
+                return res.json();
+            }
+            
+            // Delete an order by id
+            async function deleteOrder(id) {
+                await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+            }
+            
+            // Update an order by id
+            async function updateOrder(id, updates) {
+                const res = await fetch(`${API_URL}/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates)
+                });
+                return res.json();
+            }
+            
+            // Render all recorded orders
+            async function renderAllRecordedOrdersTable() {
+                const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
+                tableBody.innerHTML = '';
+                const orders = await fetchOrders();
+                orders.forEach((order, idx) => {
+                    const row = document.createElement('tr');
+                    // Status dropdown
+                    const statusOptions = ['Awaiting Payment', 'Pending', 'Completed', 'Back Order']
+                        .map(status =>
+                            `<option value="${status}"${order.status === status ? ' selected' : ''}>${status}</option>`
+                        ).join('');
+                    row.innerHTML = `
+                        <td>${order.customer}</td>
+                        <td>${order.product}</td>
+                        <td>${order.quantity}</td>
+                        <td>R${order.price.toFixed(2)}</td>
+                        <td>R${order.total.toFixed(2)}</td>
+                        <td>
+                            <select class="form-select form-select-sm order-status-select" data-id="${order.id}">
+                                ${statusOptions}
+                            </select>
+                        </td>
+                        <td>${dayjs(order.date).format('YYYY-MM-DD HH:mm')}</td>
+                        <td><button class="btn btn-danger btn-sm delete-order" data-id="${order.id}"><i class="fa fa-trash"></i> Delete</button></td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+            
+            // Handle form submission
+            document.addEventListener('DOMContentLoaded', function() {
+                const form = document.getElementById('orderForm');
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const customer = document.getElementById('customer').value.trim();
+                    const product = document.getElementById('product').value.trim();
+                    const quantity = parseInt(document.getElementById('quantity').value, 10);
+                    const price = parseFloat(document.getElementById('price').value);
+                    const status = document.getElementById('status').value;
+                    const date = new Date().toISOString();
+                    const total = quantity * price;
+            
+                    const order = { customer, product, quantity, price, total, status, date, username: user.username };
+                    await addOrder(order);
+                    await renderAllRecordedOrdersTable();
+                    form.reset();
+                });
+            
+                // Delegate delete and status change events
+                document.querySelector('#allRecordedOrdersTable tbody').addEventListener('click', async function(e) {
+                    if (e.target.closest('.delete-order')) {
+                        const id = e.target.closest('.delete-order').getAttribute('data-id');
+                        if (confirm('Are you sure you want to delete this order?')) {
+                            await deleteOrder(id);
+                            await renderAllRecordedOrdersTable();
+                        }
+                    }
+                });
+            
+                document.querySelector('#allRecordedOrdersTable tbody').addEventListener('change', async function(e) {
+                    if (e.target.classList.contains('order-status-select')) {
+                        const id = e.target.getAttribute('data-id');
+                        const newStatus = e.target.value;
+                        await updateOrder(id, { status: newStatus });
+                        await renderAllRecordedOrdersTable();
+                    }
+                });
+            
+                // Initial render
+                renderAllRecordedOrdersTable();
+            });
+            // Add dropdown for each row to select "Delete" or "Complete"
+            function renderAllRecordedOrdersTableWithActions() {
+                const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
+                tableBody.innerHTML = '';
+                const savedOrders = JSON.parse(localStorage.getItem('orders')) || [];
+                savedOrders.forEach((order, idx) => {
+                    // Status dropdown
+                    const statusOptions = ['Awaiting Payment', 'Pending', 'Completed', 'Back Order']
+                        .map(status =>
+                            `<option value="${status}"${order.status === status ? ' selected' : ''}>${status}</option>`
+                        ).join('');
+                    // Actions dropdown
+                    const actionsDropdown = `
+                        <div class="dropdown">
+                            <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                Actions             
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <a class="dropdown-item complete-order" href="#" data-idx="${idx}">
+                                        <i class="fa fa-check text-success"></i> Complete
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item delete-order" href="#" data-idx="${idx}">
+                                        <i class="fa fa-trash text-danger"></i> Delete
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    `;
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${order.customer}</td>
+                        <td>${order.product}</td>
+                        <td>${order.quantity}</td>
+                        <td>R${order.price.toFixed(2)}</td>
+                        <td>R${order.total.toFixed(2)}</td>
+                        <td>
+                            <select class="form-select form-select-sm order-status-select" data-idx="${idx}">
+                                ${statusOptions}
+                            </select>
+                        </td>
+                        <td>${dayjs(order.date).format('YYYY-MM-DD HH:mm')}</td>
+                        <td>${actionsDropdown}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            // Patch the renderAllRecordedOrdersTable function to include actions dropdown
+            window.renderAllRecordedOrdersTable = renderAllRecordedOrdersTableWithActions;
+
+            // Delegate dropdown actions
+            document.querySelector('#allRecordedOrdersTable tbody').addEventListener('click', function(e) {
+                // Delete action
+                if (e.target.closest('.delete-order')) {
+                    e.preventDefault();
+                    const idx = parseInt(e.target.closest('.delete-order').getAttribute('data-idx'), 10);
+                    let orders = JSON.parse(localStorage.getItem('orders')) || [];
+                    if (idx >= 0 && idx < orders.length) {
+                        if (confirm('Are you sure you want to delete this order?')) {
+                            orders.splice(idx, 1);
+                            localStorage.setItem('orders', JSON.stringify(orders));
+                            if (typeof renderOrders === 'function') renderOrders();
+                            if (typeof renderAllRecordedOrdersTable === 'function') renderAllRecordedOrdersTable();
+                            if (typeof renderBackOrdersTable === 'function') renderBackOrdersTable();
+                        }
+                    }
+                }
+                // Complete action
+                if (e.target.closest('.complete-order')) {
+                    e.preventDefault();
+                    const idx = parseInt(e.target.closest('.complete-order').getAttribute('data-idx'), 10);
+                    let orders = JSON.parse(localStorage.getItem('orders')) || [];
+                    if (idx >= 0 && idx < orders.length) {
+                        orders[idx].status = 'Completed';
+                        localStorage.setItem('orders', JSON.stringify(orders));
+                        if (typeof renderOrders === 'function') renderOrders();
+                        if (typeof renderAllRecordedOrdersTable === 'function') renderAllRecordedOrdersTable();
+                        if (typeof renderBackOrdersTable === 'function') renderBackOrdersTable();
+                    }
+                }
+            });
+
+            // Initial render with actions dropdown
+            renderAllRecordedOrdersTableWithActions();
+
+            // Initial render with delete buttons
+            renderAllRecordedOrdersTableWithDelete();
+
+        });
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add status change dropdown to each row in All Recorded Orders table
+            function renderAllRecordedOrdersTableWithStatusEdit() {
+                const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
+                tableBody.innerHTML = '';
+                const savedOrders = JSON.parse(localStorage.getItem('orders')) || [];
+                savedOrders.forEach((order, idx) => {
+                    const row = document.createElement('tr');
+                    // Status dropdown
+                    const statusOptions = ['Awaiting Payment', 'Pending', 'Completed', 'Back Order']
+                        .map(status =>
+                            `<option value="${status}"${order.status === status ? ' selected' : ''}>${status}</option>`
+                        ).join('');
+                    row.innerHTML = `
+                        <td>${order.customer}</td>
+                        <td>${order.product}</td>
+                        <td>${order.quantity}</td>
+                        <td>R${order.price.toFixed(2)}</td>
+                        <td>R${order.total.toFixed(2)}</td>
+                        <td>
+                            <select class="form-select form-select-sm order-status-select" data-idx="${idx}">
+                                ${statusOptions}
+                            </select>
+                        </td>
+                        <td>${dayjs(order.date).format('YYYY-MM-DD HH:mm')}</td>
+                        <td><button class="btn btn-danger btn-sm delete-order" data-idx="${idx}"><i class="fa fa-trash"></i> Delete</button></td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            // Patch the renderAllRecordedOrdersTable function to include status edit
+            window.renderAllRecordedOrdersTable = renderAllRecordedOrdersTableWithStatusEdit;
+
+            // Delegate status change event
+            document.querySelector('#allRecordedOrdersTable tbody').addEventListener('change', function(e) {
+                if (e.target.classList.contains('order-status-select')) {
+                    const idx = parseInt(e.target.getAttribute('data-idx'), 10);
+                    const newStatus = e.target.value;
+                    let orders = JSON.parse(localStorage.getItem('orders')) || [];
+                    if (idx >= 0 && idx < orders.length) {
+                        orders[idx].status = newStatus;
+                        localStorage.setItem('orders', JSON.stringify(orders));
+                        if (typeof renderOrders === 'function') renderOrders();
+                        if (typeof renderAllRecordedOrdersTable === 'function') renderAllRecordedOrdersTable();
+                        if (typeof renderBackOrdersTable === 'function') renderBackOrdersTable();
+                    }
+                }
+            });
+
+            // Initial render with status edit
+            renderAllRecordedOrdersTableWithStatusEdit();
+        });
+        </script>
+        <script>
+        // Calculate and render the grand total in the orders table footer
+        function renderGrandTotal() {
+            const orders = JSON.parse(localStorage.getItem('orders')) || [];
+            const grandTotal = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+            document.getElementById('grandTotal').textContent = 'R' + grandTotal.toFixed(2);
+        }
+
+        // Patch renderOrders to also update grand total
+        const originalRenderOrdersForGrandTotal = renderOrders;
+        renderOrders = function() {
+            originalRenderOrdersForGrandTotal.apply(this, arguments);
+            renderGrandTotal();
+        };
+
+        // Also update grand total on page load
+        document.addEventListener('DOMContentLoaded', renderGrandTotal);
+        </script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Function to render today's sales
+        function renderDailySales() {
+            const orders = JSON.parse(localStorage.getItem('orders')) || [];
+            const today = dayjs().startOf('day');
+            const dailyTotal = orders.reduce((sum, order) => {
+                const orderDate = dayjs(order.date);
+                return orderDate.isSame(today, 'day') ? sum + (order.total || 0) : sum;
+            }, 0);
+            document.getElementById('dailyTotal').textContent = 'R' + dailyTotal.toFixed(2);
+        }
+
+        // Function to render this month's sales
+        function renderMonthlySales() {
+            const orders = JSON.parse(localStorage.getItem('orders')) || [];
+            const monthStart = dayjs().startOf('month');
+            const monthlyTotal = orders.reduce((sum, order) => {
+                const orderDate = dayjs(order.date);
+                return orderDate.isSame(monthStart, 'month') ? sum + (order.total || 0) : sum;
+            }, 0);
+            document.getElementById('monthlyTotal').textContent = 'R' + monthlyTotal.toFixed(2);
+        }
+
+        // Call the functions on page load
+        renderDailySales();
+        renderMonthlySales();
+    });
+    </script>
+    <tfoot>
+        <h2>Monthly Sales</h2>
+        <table id="monthlySalesTable" border="1" class="mt-20 w-100 maxw-600">
+        <thead>
+            <tr>
+                <th>Month</th>
+                <th>Sales (R)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Monthly sales will appear here -->
+        </tbody>
+
+  <title>Daily Sales Recorder</title>
+    </table>
+    <script>
+        // Function to render monthly sales
+        function renderMonthlySales() {
+            const orders = JSON.parse(localStorage.getItem('orders')) || [];
+            const monthlySales = {};
+
+            orders.forEach(order => {
+                const orderDate = dayjs(order.date);
+                const monthKey = orderDate.format('YYYY-MM'); // e.g., "2023-10"
+                if (!monthlySales[monthKey]) {
+                    monthlySales[monthKey] = 0;
+                }
+                monthlySales[monthKey] += order.total || 0;
+            });
+
+            const tableBody = document.querySelector('#monthlySalesTable tbody');
+            tableBody.innerHTML = '';
+            Object.entries(monthlySales).forEach(([month, total]) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${dayjs(month).format('MMMM YYYY')}</td><td>R${total.toFixed(2)}</td>`;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Call the function on page load
+        document.addEventListener('DOMContentLoaded', renderMonthlySales);
+    </script>
+<body>
+    <h1>Sales Dashboard</h1>
+    <div class="container my-4">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Active Users</h5>
+                        <p class="card-text" id="activeUsers">0</p>
+<button onclick="downloadSalesPDF()" class="btn btn-primary ms-2"><i class="fa fa-file-pdf"></i> Download Sales PDF</button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.7.0/jspdf.plugin.autotable.min.js"></script>
+<script>
+    function downloadSalesPDF() {
+        const orders = JSON.parse(localStorage.getItem('orders')) || [];
+        if (orders.length === 0) {
+            alert('No sales to export.');
+            return;
+        }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        doc.text('All Recorded Sales', 14, 16);
+
+        const tableColumn = [
+            "Customer",
+            "Product",
+            "Quantity",
+            "Price per Unit",
+            "Total",
+            "Status",
+            "Date",
+            "Time"
+        ];
+        const tableRows = orders.map(order => [
+            order.customer,
+            order.product,
+            order.quantity,
+            'R' + (order.price || 0).toFixed(2),
+            'R' + (order.total || 0).toFixed(2),
+            order.status || 'Awaiting Payment',
+            dayjs(order.date).format('YYYY-MM-DD'),
+            dayjs(order.date).format('HH:mm')
+        ]);
+
+        doc.autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 22,
+            styles: { fontSize: 9 }
+        });
+
+        doc.save('sales-records.pdf');
+    }
+</script>
+
+  <ul id="salesList"></ul>
+
+  <script>
+
+    
+    </script>
+        <tfoot>
+            <tr>
+                <th colspan="4" style="text-align:right;">Total:</th>
+                <th id="monthlyTotal">R0.00</th>
+            </tr>
+        </tfoot>
+    </table>
+            <tr>
+                <th colspan="4" style="text-align:right;">Grand Total:</th>
+                <th id="grandTotal">R0.00</th>
+            </tr>
+        </tfoot>
+
+     <div id="salesSummary" class="mt-20">
+        <p><strong>Today's Sales:</strong> <span id="dailyTotal">R0.00</span></p>
+        <p><strong>This Month's Sales:</strong> <span id="monthlyTotal">R0.00</span></p>
+    </div>
+    <!-- WhatsApp Integration Button -->
+    <div class="text-end my-3">
+        <button id="whatsappBtn" class="btn btn-success">
+            <i class="fab fa-whatsapp"></i> Contact via WhatsApp
+        </button>
+    </div>
+    <script>
+    // WhatsApp integration: opens WhatsApp chat with preset message
+    const whatsappNumber = '27816133985'; // e.g. 27821234567 (country code, no + or leading 0)
+    const whatsappMessage = encodeURIComponent('Hello! I would like to inquire about my sales orders.');
+    document.getElementById('whatsappBtn').addEventListener('click', function() {
+        window.open(`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`, '_blank');
+    });
+    </script>
+    <!-- Sage Intacct Integration Button -->
+    <div class="text-end my-3">
+        <button id="sageIntacctBtn" class="btn btn-warning">
+            <i class="fa fa-external-link-alt"></i> Go to Sage Intacct
+        </button>
+    </div>
+    <script>
+    // Sage Intacct integration: opens Sage Intacct in a new tab
+    const sageIntacctUrl = 'https://www.intacct.com/ia/acct/login.phtml?.done=frameset.phtml'; // Update to your Sage Intacct dashboard if needed
+
+    document.getElementById('sageIntacctBtn').addEventListener('click', function() {
+        window.open(sageIntacctUrl, '_blank');
+    });
+    </script>
+</body>
+</html>

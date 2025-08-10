@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.3/dayjs.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 24px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+        }
+        .dashboard-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+        .dashboard-header h1 {
+            margin: 0;
+            font-size: 2rem;
+            color: #222;
+        }
+        .refresh-btn {
+            padding: 8px 16px;
+            border: none;
+            background: #0078d4;
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 24px;
+        }
+        .dashboard-card {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .dashboard-card h2 {
+            margin: 0 0 12px 0;
+            font-size: 1.2rem;
+            color: #444;
+        }
+        .dashboard-card .value {
+            font-size: 2.2rem;
+            font-weight: bold;
+            color: #0078d4;
+        }
+        .dashboard-card .desc {
+            font-size: 0.95rem;
+            color: #888;
+        }
+        .orders-section {
+            margin-top: 32px;
+        }
+        .orders-section h2 {
+            font-size: 1.5rem;
+            color: #222;
+            margin-bottom: 16px;
+        }
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 32px;
+        }
+        .orders-table th, .orders-table td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #e1e1e1;
+        }
+        .orders-table th {
+            background: #f4f4f4;
+            font-weight: bold;
+        }
+        @media (max-width: 600px) {
+            .dashboard-container {
+                padding: 12px;
+            }
+            .dashboard-header h1 {
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="index.html">Sales System</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" title="Toggle navigation menu">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.html">Orders</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="dashboard.html">Dashboard</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h1>Sales Dashboard</h1>
+            <button onclick="refreshDashboard()" class="refresh-btn">Refresh</button>
+        </div>
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <h2>Active Users</h2>
+                <div class="value" id="activeUsers">0</div>
+                <div class="desc">Currently active</div>
+            </div>
+            <div class="dashboard-card">
+                <h2>Tasks Completed</h2>
+                <div class="value" id="tasksCompleted">0</div>
+                <div class="desc">Total completed tasks</div>
+            </div>
+            <div class="dashboard-card">
+                <h2>System Health</h2>
+                <div class="value" id="systemHealth">Good</div>
+                <div class="desc">Overall system status</div>
+            </div>
+            <div class="dashboard-card">
+                <h2>Notifications</h2>
+                <div class="value" id="notifications">0</div>
+                <div class="desc">Pending notifications</div>
+            </div>
+        </div>  
+
+        <div class="orders-section">
+            <h2>Recent Orders</h2>
+            <table class="orders-table">
+                <thead>
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="orderList"></tbody>
+            </table>
+        <div class="container my-4">
+            <div class="row">
+                <div class="col-md-6">
+                    <h4>Best Selling Products</h4>
+                    <ul id="bestProducts"></ul>
+                </div>
+                <div class="col-md-6">
+                    <h4>Top Customers</h4>
+                    <ul id="topCustomers"></ul>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <h4>Sales Trends</h4>
+                    <ul id="salesTrends"></ul>
+                </div>
+                <div class="col-md-6">
+                    <h4>Recommendation</h4>
+                    <div id="salesRecommendation" class="alert alert-info"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="shared.js"></script>
+    <script src="sales-analytics.js"></script>
+    <script>
+function getSessionUser() {
+    return JSON.parse(localStorage.getItem('salesUser') || 'null');
+}
+function logout() {
+    localStorage.removeItem('salesUser');
+    window.location.href = 'login.html';
+}
+const API_URL = '/orders';
+// Fetch orders for current user from backend
+async function fetchUserOrders() {
+    const user = getSessionUser();
+    const resp = await fetch(API_URL);
+    const allOrders = await resp.json();
+    return allOrders.filter(o => o.username === user.username);
+}
+// --- Analytics widgets using backend data ---
+async function renderSalesAnalytics() {
+    const orders = await fetchUserOrders();
+    // Best Selling Products
+    const productCounts = {};
+    orders.forEach(order => {
+        if (!productCounts[order.product]) productCounts[order.product] = 0;
+        productCounts[order.product] += order.quantity;
+    });
+    const bestProducts = Object.entries(productCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+    const bestProductsList = document.getElementById('bestProducts');
+    if (bestProductsList) {
+        bestProductsList.innerHTML = bestProducts.map(([product, qty]) => `<li>${product} (${qty})</li>`).join('') || '<li>No data</li>';
+    }
+    // Top Customers
+    const customerTotals = {};
+    orders.forEach(order => {
+        if (!customerTotals[order.customer]) customerTotals[order.customer] = 0;
+        customerTotals[order.customer] += order.total || 0;
+    });
+    const topCustomers = Object.entries(customerTotals)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+    const topCustomersList = document.getElementById('topCustomers');
+    if (topCustomersList) {
+        topCustomersList.innerHTML = topCustomers.map(([customer, total]) => `<li>${customer} (R${total.toFixed(2)})</li>`).join('') || '<li>No data</li>';
+    }
+    // Sales Trends (by month)
+    const trends = {};
+    orders.forEach(order => {
+        const month = order.date ? order.date.slice(0, 7) : 'Unknown';
+        if (!trends[month]) trends[month] = 0;
+        trends[month] += order.total || 0;
+    });
+    const salesTrendsList = document.getElementById('salesTrends');
+    if (salesTrendsList) {
+        salesTrendsList.innerHTML = Object.entries(trends)
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([month, total]) => `<li>${month}: R${total.toFixed(2)}</li>`)
+            .join('') || '<li>No data</li>';
+    }
+    // Recommendation
+    const recommendationDiv = document.getElementById('salesRecommendation');
+    if (recommendationDiv) {
+        if (bestProducts.length && bestProducts[0][1] > 5) {
+            recommendationDiv.textContent = `Consider stocking up on "${bestProducts[0][0]}". It's selling fast!`;
+        } else if (orders.length === 0) {
+            recommendationDiv.textContent = 'No sales data yet. Start recording orders!';
+        } else {
+            recommendationDiv.textContent = 'Keep tracking your sales for more insights.';
+        }
+    }
+}
+document.addEventListener('DOMContentLoaded', function() {
+    const user = getSessionUser();
+    if (!user) {
+        window.location.href = 'login.html';
+        return;
+    }
+    // Show username and logout in navbar
+    const navInfo = document.getElementById('userNavInfo');
+    if (navInfo) {
+        navInfo.innerHTML = `<span class='text-light me-2'>${user.username} (${user.role})</span><button class='btn btn-sm btn-outline-light' onclick='logout()'>Logout</button>`;
+    }
+    renderSalesAnalytics();
+});
+    </script>
+</body>
+</html>
