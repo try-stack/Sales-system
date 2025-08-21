@@ -21,6 +21,7 @@
         dayjs.extend(dayjs_plugin_customParseFormat);
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="order-tracking.js"></script>
     <script src="script.js"></script>
     <script src="shared.js"></script>
     <script src="sales-analytics.js"></script>
@@ -51,6 +52,59 @@
     </div>
 </nav>
     <h1>Sales Order Recorder</h1>
+    
+    <!-- Order Tracking Dashboard -->
+    <div class="container my-4">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5><i class="fa fa-dashboard"></i> Order Tracking Dashboard</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h6>Total Orders</h6>
+                                    <h3 id="totalOrdersCount" class="text-primary">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h6>Completed</h6>
+                                    <h3 id="completedOrdersCount" class="text-success">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h6>Pending</h6>
+                                    <h3 id="pendingOrdersCount" class="text-warning">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h6>Total Revenue</h6>
+                                    <h3 id="totalRevenue" class="text-info">R0.00</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Order Status Summary</h6>
+                                <div id="statusSummary" class="small"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Recent Activity</h6>
+                                <div id="recentActivity" class="small"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="container my-4">
         <div class="row">
             <div class="col-md-6">
@@ -268,6 +322,48 @@ async function showOrderHistory(orderId) {
     const modal = new bootstrap.Modal(document.getElementById('orderHistoryModal'));
     modal.show();
 }
+
+// Update order tracking dashboard
+async function updateOrderDashboard() {
+    try {
+        const orders = await fetchOrders();
+        
+        // Update order counts
+        document.getElementById('totalOrdersCount').textContent = orders.length;
+        document.getElementById('completedOrdersCount').textContent = 
+            orders.filter(o => o.status === 'Completed').length;
+        document.getElementById('pendingOrdersCount').textContent = 
+            orders.filter(o => ['Pending', 'In Progress', 'Awaiting Payment'].includes(o.status)).length;
+        
+        // Update total revenue
+        const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+        document.getElementById('totalRevenue').textContent = `R${totalRevenue.toFixed(2)}`;
+        
+        // Update status summary
+        const statusSummary = {};
+        ['Awaiting Payment', 'Pending', 'Completed', 'Back Order'].forEach(status => {
+            statusSummary[status] = orders.filter(o => o.status === status).length;
+        });
+        
+        const statusHtml = Object.entries(statusSummary)
+            .map(([status, count]) => `<div>${status}: ${count}</div>`)
+            .join('');
+        document.getElementById('statusSummary').innerHTML = statusHtml;
+        
+        // Update recent activity
+        const recentOrders = orders
+            .sort((a, b) => new Date(b.updatedAt || b.date) - new Date(a.updatedAt || a.date))
+            .slice(0, 3);
+            
+        const activityHtml = recentOrders
+            .map(order => `<div>Order #${order.orderNumber || order.id} - ${order.status}</div>`)
+            .join('');
+        document.getElementById('recentActivity').innerHTML = activityHtml || '<div>No recent activity</div>';
+        
+    } catch (error) {
+        console.error('Error updating dashboard:', error);
+    }
+}
 // --- Render all recorded orders with actions ---
 async function renderAllRecordedOrdersTable() {
     const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
@@ -340,6 +436,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (navInfo) {
         navInfo.innerHTML = `<span class='text-light me-2'>${user.username} (${user.role})</span><button class='btn btn-sm btn-outline-light' onclick='logout()'>Logout</button>`;
     }
+    
+    // Initialize dashboard
+    updateOrderDashboard();
+    renderAllRecordedOrdersTable();
+    
     const form = document.getElementById('orderForm');
     if (form) {
         form.addEventListener('submit', async function(e) {
@@ -356,6 +457,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const order = { customer, product, quantity, price, total, status, date, username: user.username };
             await addOrder(order);
             await renderAllRecordedOrdersTable();
+            await updateOrderDashboard();
             form.reset();
         });
     }
@@ -367,6 +469,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (confirm('Are you sure you want to delete this order?')) {
                 await deleteOrder(id);
                 await renderAllRecordedOrdersTable();
+                await updateOrderDashboard();
             }
         }
         if (e.target.closest('.complete-order')) {
@@ -374,6 +477,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const id = e.target.closest('.complete-order').getAttribute('data-id');
             await updateOrder(id, { status: 'Completed' });
             await renderAllRecordedOrdersTable();
+            await updateOrderDashboard();
         }
         if (e.target.closest('.view-history')) {
             e.preventDefault();
@@ -387,6 +491,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const newStatus = e.target.value;
             await updateOrder(id, { status: newStatus });
             await renderAllRecordedOrdersTable();
+            await updateOrderDashboard();
         }
     });
     renderAllRecordedOrdersTable();
