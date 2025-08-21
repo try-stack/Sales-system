@@ -5,6 +5,10 @@ const fs = require('fs');
 const app = express();
 const PORT = 3000;
 
+// Apply middleware first
+app.use(cors());
+app.use(bodyParser.json());
+
 // --- USER REGISTRATION & USER LIST API ---
 // Register a new user
 app.post('/api/register', (req, res) => {
@@ -29,9 +33,6 @@ app.get('/api/users', (req, res) => {
     res.json(readUsers());
 });
 
-app.use(cors());
-app.use(bodyParser.json());
-
 const DATA_FILE = 'orders.json';
 
 // Helper to read/write orders
@@ -48,10 +49,75 @@ app.get('/orders', (req, res) => {
     res.json(readOrders());
 });
 
+// Search and filter orders
+app.get('/orders/search', (req, res) => {
+    const { query, status, customer, product, startDate, endDate } = req.query;
+    let orders = readOrders();
+    
+    // Apply filters
+    if (query) {
+        const searchQuery = query.toLowerCase();
+        orders = orders.filter(order => 
+            order.customer.toLowerCase().includes(searchQuery) ||
+            order.product.toLowerCase().includes(searchQuery) ||
+            order.orderNumber.toString().includes(searchQuery)
+        );
+    }
+    
+    if (status) {
+        orders = orders.filter(order => order.status === status);
+    }
+    
+    if (customer) {
+        orders = orders.filter(order => 
+            order.customer.toLowerCase().includes(customer.toLowerCase())
+        );
+    }
+    
+    if (product) {
+        orders = orders.filter(order => 
+            order.product.toLowerCase().includes(product.toLowerCase())
+        );
+    }
+    
+    if (startDate) {
+        orders = orders.filter(order => 
+            new Date(order.createdAt || order.date) >= new Date(startDate)
+        );
+    }
+    
+    if (endDate) {
+        orders = orders.filter(order => 
+            new Date(order.createdAt || order.date) <= new Date(endDate)
+        );
+    }
+    
+    res.json(orders);
+});
+
 // Add a new order
 app.post('/orders', (req, res) => {
     const orders = readOrders();
-    const order = { id: Date.now(), ...req.body };
+    
+    // Generate sequential order number
+    const lastOrderNumber = orders.length > 0 ? 
+        Math.max(...orders.map(o => o.orderNumber || 0)) : 0;
+    const orderNumber = lastOrderNumber + 1;
+    
+    // Create order with tracking information
+    const order = { 
+        id: Date.now(), 
+        orderNumber: orderNumber,
+        ...req.body,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statusHistory: [{
+            status: req.body.status || 'Awaiting Payment',
+            timestamp: new Date().toISOString(),
+            updatedBy: req.body.username || 'system'
+        }]
+    };
+    
     orders.push(order);
     writeOrders(orders);
     res.status(201).json(order);
@@ -70,7 +136,26 @@ app.delete('/orders/:id', (req, res) => {
 app.put('/orders/:id', (req, res) => {
     let orders = readOrders();
     const id = parseInt(req.params.id, 10);
-    orders = orders.map(order => order.id === id ? { ...order, ...req.body } : order);
+    const existingOrder = orders.find(order => order.id === id);
+    
+    if (!existingOrder) {
+        return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    // Track status changes in history
+    const updates = { ...req.body, updatedAt: new Date().toISOString() };
+    if (req.body.status && req.body.status !== existingOrder.status) {
+        updates.statusHistory = [
+            ...(existingOrder.statusHistory || []),
+            {
+                status: req.body.status,
+                timestamp: new Date().toISOString(),
+                updatedBy: req.body.updatedBy || 'system'
+            }
+        ];
+    }
+    
+    orders = orders.map(order => order.id === id ? { ...order, ...updates } : order);
     writeOrders(orders);
     res.json(orders.find(order => order.id === id));
 });
