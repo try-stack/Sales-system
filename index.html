@@ -20,6 +20,8 @@
         dayjs.extend(dayjs_plugin_advancedFormat);
         dayjs.extend(dayjs_plugin_customParseFormat);
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="order-tracking.js"></script>
     <script src="script.js"></script>
     <script src="shared.js"></script>
     <script src="sales-analytics.js"></script>
@@ -50,6 +52,59 @@
     </div>
 </nav>
     <h1>Sales Order Recorder</h1>
+    
+    <!-- Order Tracking Dashboard -->
+    <div class="container my-4">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5><i class="fa fa-dashboard"></i> Order Tracking Dashboard</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h6>Total Orders</h6>
+                                    <h3 id="totalOrdersCount" class="text-primary">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h6>Completed</h6>
+                                    <h3 id="completedOrdersCount" class="text-success">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h6>Pending</h6>
+                                    <h3 id="pendingOrdersCount" class="text-warning">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h6>Total Revenue</h6>
+                                    <h3 id="totalRevenue" class="text-info">R0.00</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Order Status Summary</h6>
+                                <div id="statusSummary" class="small"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Recent Activity</h6>
+                                <div id="recentActivity" class="small"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="container my-4">
         <div class="row">
             <div class="col-md-6">
@@ -101,23 +156,59 @@ async function deleteOrder(id) {
     await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
 }
 async function updateOrder(id, updates) {
+    const user = getSessionUser();
     const res = await fetch(`${API_URL}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
+        body: JSON.stringify({ ...updates, updatedBy: user.username })
     });
     return res.json();
 }
-// --- Render all recorded orders with actions ---
-async function renderAllRecordedOrdersTable() {
+
+// Search and filter orders
+async function searchOrders() {
+    const searchQuery = document.getElementById('searchInput').value;
+    const statusFilter = document.getElementById('statusFilter').value;
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    const params = new URLSearchParams();
+    if (searchQuery) params.append('query', searchQuery);
+    if (statusFilter) params.append('status', statusFilter);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    
+    const user = getSessionUser();
+    const res = await fetch(`${API_URL}/search?${params.toString()}`);
+    const allOrders = await res.json();
+    const filteredOrders = allOrders.filter(o => o.username === user.username);
+    
+    renderOrdersTable(filteredOrders);
+}
+
+// Clear all filters
+function clearFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('statusFilter').value = '';
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    renderAllRecordedOrdersTable();
+}
+
+// Render orders table with specific orders array
+function renderOrdersTable(orders) {
     const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
     tableBody.innerHTML = '';
-    const orders = await fetchOrders();
+    
+    // Sort orders by order number (newest first)
+    orders.sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0));
+    
     orders.forEach(order => {
         // Status dropdown
         const statusOptions = ['Awaiting Payment', 'Pending', 'Completed', 'Back Order']
             .map(status => `<option value="${status}"${order.status === status ? ' selected' : ''}>${status}</option>`)
             .join('');
+            
         // Actions dropdown
         const actionsDropdown = `
             <div class="dropdown">
@@ -125,6 +216,11 @@ async function renderAllRecordedOrdersTable() {
                     Actions
                 </button>
                 <ul class="dropdown-menu">
+                    <li>
+                        <a class="dropdown-item view-history" href="#" data-id="${order.id}">
+                            <i class="fa fa-history text-info"></i> View History
+                        </a>
+                    </li>
                     <li>
                         <a class="dropdown-item complete-order" href="#" data-id="${order.id}">
                             <i class="fa fa-check text-success"></i> Complete
@@ -138,8 +234,10 @@ async function renderAllRecordedOrdersTable() {
                 </ul>
             </div>
         `;
+        
         const row = document.createElement('tr');
         row.innerHTML = `
+            <td><strong>#${order.orderNumber || order.id}</strong></td>
             <td>${order.customer}</td>
             <td>${order.product}</td>
             <td>${order.quantity}</td>
@@ -150,7 +248,177 @@ async function renderAllRecordedOrdersTable() {
                     ${statusOptions}
                 </select>
             </td>
-            <td>${dayjs(order.date).format('YYYY-MM-DD HH:mm')}</td>
+            <td>${dayjs(order.createdAt || order.date).format('YYYY-MM-DD HH:mm')}</td>
+            <td>${actionsDropdown}</td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
+// Show order history modal
+async function showOrderHistory(orderId) {
+    const user = getSessionUser();
+    const res = await fetch(API_URL);
+    const allOrders = await res.json();
+    const order = allOrders.find(o => o.id === parseInt(orderId) && o.username === user.username);
+    
+    if (!order) {
+        alert('Order not found');
+        return;
+    }
+    
+    const historyHtml = (order.statusHistory || []).map(entry => `
+        <tr>
+            <td>${entry.status}</td>
+            <td>${dayjs(entry.timestamp).format('YYYY-MM-DD HH:mm:ss')}</td>
+            <td>${entry.updatedBy}</td>
+        </tr>
+    `).join('');
+    
+    const modalHtml = `
+        <div class="modal fade" id="orderHistoryModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Order #${order.orderNumber || order.id} History</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <h6>Order Details:</h6>
+                        <p><strong>Customer:</strong> ${order.customer}</p>
+                        <p><strong>Product:</strong> ${order.product}</p>
+                        <p><strong>Total:</strong> R${order.total.toFixed(2)}</p>
+                        
+                        <h6>Status History:</h6>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Date/Time</th>
+                                    <th>Updated By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${historyHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('orderHistoryModal');
+    if (existingModal) existingModal.remove();
+    
+    // Add modal to page
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('orderHistoryModal'));
+    modal.show();
+}
+
+// Update order tracking dashboard
+async function updateOrderDashboard() {
+    try {
+        const orders = await fetchOrders();
+        
+        // Update order counts
+        document.getElementById('totalOrdersCount').textContent = orders.length;
+        document.getElementById('completedOrdersCount').textContent = 
+            orders.filter(o => o.status === 'Completed').length;
+        document.getElementById('pendingOrdersCount').textContent = 
+            orders.filter(o => ['Pending', 'In Progress', 'Awaiting Payment'].includes(o.status)).length;
+        
+        // Update total revenue
+        const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+        document.getElementById('totalRevenue').textContent = `R${totalRevenue.toFixed(2)}`;
+        
+        // Update status summary
+        const statusSummary = {};
+        ['Awaiting Payment', 'Pending', 'Completed', 'Back Order'].forEach(status => {
+            statusSummary[status] = orders.filter(o => o.status === status).length;
+        });
+        
+        const statusHtml = Object.entries(statusSummary)
+            .map(([status, count]) => `<div>${status}: ${count}</div>`)
+            .join('');
+        document.getElementById('statusSummary').innerHTML = statusHtml;
+        
+        // Update recent activity
+        const recentOrders = orders
+            .sort((a, b) => new Date(b.updatedAt || b.date) - new Date(a.updatedAt || a.date))
+            .slice(0, 3);
+            
+        const activityHtml = recentOrders
+            .map(order => `<div>Order #${order.orderNumber || order.id} - ${order.status}</div>`)
+            .join('');
+        document.getElementById('recentActivity').innerHTML = activityHtml || '<div>No recent activity</div>';
+        
+    } catch (error) {
+        console.error('Error updating dashboard:', error);
+    }
+}
+// --- Render all recorded orders with actions ---
+async function renderAllRecordedOrdersTable() {
+    const tableBody = document.querySelector('#allRecordedOrdersTable tbody');
+    tableBody.innerHTML = '';
+    const orders = await fetchOrders();
+    
+    // Sort orders by order number (newest first)
+    orders.sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0));
+    
+    orders.forEach(order => {
+        // Status dropdown
+        const statusOptions = ['Awaiting Payment', 'Pending', 'Completed', 'Back Order']
+            .map(status => `<option value="${status}"${order.status === status ? ' selected' : ''}>${status}</option>`)
+            .join('');
+            
+        // Actions dropdown
+        const actionsDropdown = `
+            <div class="dropdown">
+                <button class="btn btn-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Actions
+                </button>
+                <ul class="dropdown-menu">
+                    <li>
+                        <a class="dropdown-item view-history" href="#" data-id="${order.id}">
+                            <i class="fa fa-history text-info"></i> View History
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item complete-order" href="#" data-id="${order.id}">
+                            <i class="fa fa-check text-success"></i> Complete
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item delete-order" href="#" data-id="${order.id}">
+                            <i class="fa fa-trash text-danger"></i> Delete
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        `;
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>#${order.orderNumber || order.id}</strong></td>
+            <td>${order.customer}</td>
+            <td>${order.product}</td>
+            <td>${order.quantity}</td>
+            <td>R${order.price.toFixed(2)}</td>
+            <td>R${order.total.toFixed(2)}</td>
+            <td>
+                <select class="form-select form-select-sm order-status-select" data-id="${order.id}">
+                    ${statusOptions}
+                </select>
+            </td>
+            <td>${dayjs(order.createdAt || order.date).format('YYYY-MM-DD HH:mm')}</td>
             <td>${actionsDropdown}</td>
         `;
         tableBody.appendChild(row);
@@ -168,6 +436,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (navInfo) {
         navInfo.innerHTML = `<span class='text-light me-2'>${user.username} (${user.role})</span><button class='btn btn-sm btn-outline-light' onclick='logout()'>Logout</button>`;
     }
+    
+    // Initialize dashboard
+    updateOrderDashboard();
+    renderAllRecordedOrdersTable();
+    
     const form = document.getElementById('orderForm');
     if (form) {
         form.addEventListener('submit', async function(e) {
@@ -184,6 +457,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const order = { customer, product, quantity, price, total, status, date, username: user.username };
             await addOrder(order);
             await renderAllRecordedOrdersTable();
+            await updateOrderDashboard();
             form.reset();
         });
     }
@@ -195,6 +469,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (confirm('Are you sure you want to delete this order?')) {
                 await deleteOrder(id);
                 await renderAllRecordedOrdersTable();
+                await updateOrderDashboard();
             }
         }
         if (e.target.closest('.complete-order')) {
@@ -202,6 +477,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const id = e.target.closest('.complete-order').getAttribute('data-id');
             await updateOrder(id, { status: 'Completed' });
             await renderAllRecordedOrdersTable();
+            await updateOrderDashboard();
+        }
+        if (e.target.closest('.view-history')) {
+            e.preventDefault();
+            const id = e.target.closest('.view-history').getAttribute('data-id');
+            await showOrderHistory(id);
         }
     });
     document.querySelector('#allRecordedOrdersTable tbody').addEventListener('change', async function(e) {
@@ -210,6 +491,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const newStatus = e.target.value;
             await updateOrder(id, { status: newStatus });
             await renderAllRecordedOrdersTable();
+            await updateOrderDashboard();
         }
     });
     renderAllRecordedOrdersTable();
@@ -350,9 +632,48 @@ function downloadSalesPDF() {
 
     <!-- Table to save all recorded orders for future reference -->
     <h2>All Recorded Orders</h2>
+    
+    <!-- Order Search and Filter Section -->
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Search & Filter Orders</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <input type="text" class="form-control" id="searchInput" placeholder="Search orders...">
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" id="statusFilter">
+                                <option value="">All Status</option>
+                                <option value="Awaiting Payment">Awaiting Payment</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Back Order">Back Order</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" class="form-control" id="startDate" placeholder="Start Date">
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" class="form-control" id="endDate" placeholder="End Date">
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-primary" onclick="searchOrders()">Search</button>
+                            <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <table id="allRecordedOrdersTable" class="table table-bordered all-recorded-orders-table">
         <thead>
             <tr>
+                <th>Order #</th>
                 <th>Customer</th>
                 <th>Product</th>
                 <th>Quantity</th>
@@ -360,8 +681,7 @@ function downloadSalesPDF() {
                 <th>Total</th>
                 <th>Status</th>
                 <th>Date</th>
-                <th>Time</th>
-                
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
